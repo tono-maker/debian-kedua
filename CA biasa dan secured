@@ -1,0 +1,291 @@
+# INSTALL
+apt update
+apt install openssl apache2 -y
+
+# =========================
+# BUAT FOLDER CA
+# =========================
+
+mkdir -p /etc/ca/{certs,crl,newcerts,private}
+chmod 700 /etc/ca/private
+
+touch /etc/ca/index.txt
+echo 1000 > /etc/ca/serial
+
+# COPY CONFIG OPENSSL
+cp /etc/ssl/openssl.cnf /etc/ca/openssl.cnf
+
+# =========================
+# BUAT PRIVATE KEY CA
+# =========================
+
+openssl genrsa -out /etc/ca/private/ca.key.pem 2048
+
+# =========================
+# BUAT CERTIFICATE CA
+# =========================
+
+openssl req -x509 -new -nodes \
+-key /etc/ca/private/ca.key.pem \
+-sha256 -days 3650 \
+-out /etc/ca/certs/ca.cert.pem
+
+# Common Name isi:
+# CA-DIMAS
+
+# =========================
+# EDIT CONFIG OPENSSL
+# =========================
+
+nano /etc/ca/openssl.cnf
+
+#cari
+[ CA_default ]
+
+#ganti menjadi
+[ CA_default ]
+dir               = /etc/ca
+certs             = $dir/certs
+crl_dir           = $dir/crl
+new_certs_dir     = $dir/newcerts
+database          = $dir/index.txt
+serial            = $dir/serial
+private_key       = $dir/private/ca.key.pem
+certificate       = $dir/certs/ca.cert.pem
+default_md        = sha256
+policy            = policy_loose
+
+#cari ini
+[ policy_match ] dan dibawahnya
+
+#ganti menjadi
+[ policy_loose ]
+commonName = supplied
+
+# =========================
+# BUAT KEY DOMAIN
+# =========================
+
+openssl genrsa -out rehan.com.key 2048
+
+# =========================
+# BUAT CSR DOMAIN
+# =========================
+
+openssl req -new \
+-key rehan.com.key \
+-out rehan.com.csr
+
+# Common Name isi:
+# rehan.com
+
+# =========================
+# SIGN CERTIFICATE DOMAIN
+# =========================
+
+openssl ca -config /etc/ca/openssl.cnf \
+-in rehan.com.csr \
+-out rehan.com.crt
+
+# ketik:
+# y
+# y
+
+# =========================
+# TEST CERTIFICATE
+# =========================
+
+openssl x509 -in rehan.com.crt -text -noout
+
+# =========================
+# SETUP SSL APACHE
+# =========================
+
+mkdir -p /etc/apache2/ssl
+
+cp rehan.com.crt /etc/apache2/ssl/
+cp rehan.com.key /etc/apache2/ssl/
+cp /etc/ca/certs/ca.cert.pem /etc/apache2/ssl/
+
+# AKTIFKAN SSL
+a2enmod ssl
+
+# =========================
+# BUAT VHOST SSL
+# =========================
+
+nano /etc/apache2/sites-available/ssl.conf
+
+#isi
+<VirtualHost *:443>
+
+    ServerName ncc.com
+    ServerAlias www.ncc.com mail.ncc.com
+
+    DocumentRoot /var/www/html
+
+    SSLEngine on
+
+    SSLCertificateFile /etc/apache2/ssl/ncc.com.crt
+    SSLCertificateKeyFile /etc/apache2/ssl/ncc.com.key
+    SSLCACertificateFile /etc/apache2/ssl/ca.cert.pem
+
+</VirtualHost>
+
+# =========================
+# AKTIFKAN SITE
+# =========================
+
+a2ensite ssl.conf
+
+systemctl restart apache2
+
+# =========================
+# CEK APACHE
+# =========================
+
+systemctl status apache2
+
+@       IN  NS  rehan.com.
+@       IN  A   192.168.30.23
+www     IN  A   192.168.30.23
+mail    IN  A   192.168.30.23
+
+@       IN  MX  10 mail.rehan.com.
+
+
+
+
+
+ ========================= CA TRUSTED/SECURED =========================
+
+# INSTALL
+apt update
+apt install openvpn easy-rsa openssl apache2 -y
+
+# =========================
+# BUAT FOLDER CERTIFICATE
+# =========================
+
+mkdir -p /home/cert/Cert.web
+
+cd /home/cert/Cert.web
+
+# =========================
+# BUAT PRIVATE KEY CA
+# =========================
+
+openssl genrsa -des3 -out MyCA.key 2048
+
+# =========================
+# BUAT CERTIFICATE CA
+# =========================
+
+openssl req -x509 -new -nodes \
+-key MyCA.key \
+-sha256 -days 365 \
+-out MyCA.pem
+
+# =========================
+# CONVERT KE P7B
+# =========================
+
+openssl crl2pkcs7 -nocrl \
+-certfile MyCA.pem \
+-out MyCA.p7b
+
+# =========================
+# BUAT KEY WEBSITE
+# =========================
+
+openssl genrsa -out www.key 2048
+
+# =========================
+# BUAT CSR WEBSITE
+# =========================
+
+openssl req -new \
+-key www.key \
+-out www.csr
+
+# Common Name isi:
+# www.kaltaramaju.com
+
+# =========================
+# BUAT CONFIG EXTENSION SSL
+# =========================
+
+nano config.txt
+
+authorityKeyIdentifier=keyid,issuer
+basicConstraints=CA:FALSE
+keyUsage=digitalSignature,nonRepudiation,keyEncipherment,dataEncipherment
+subjectAltName=@alt_names
+
+[alt_names]
+DNS.1=www.kaltaramaju.com
+DNS.2=kaltaramaju.com
+IP.1=192.168.12.1
+
+# =========================
+# SIGN CERTIFICATE WEBSITE
+# =========================
+
+openssl x509 -req \
+-in www.csr \
+-CA MyCA.pem \
+-CAkey MyCA.key \
+-CAcreateserial \
+-out www.crt \
+-days 365 \
+-sha256 \
+-extfile config.txt
+
+# =========================
+# CONVERT CERTIFICATE
+# =========================
+
+openssl pkcs7 \
+-in MyCA.p7b \
+-print_certs \
+-out MyCA.cer
+
+# =========================
+# TAMBAHKAN KE TRUSTED CA DEBIAN
+# =========================
+
+cp MyCA.cer /usr/local/share/ca-certificates/
+
+update-ca-certificates
+
+a2enmod ssl
+
+cp /etc/apache2/sites-available/default-ssl.conf \
+/etc/apache2/sites-available/db.Web-Daviid-ssl.conf
+
+/usr/sbin/a2enmod ssl
+
+cp /etc/apache2/sites-available/default-ssl.conf \
+/etc/apache2/sites-available/db.Web-Daviid-ssl.conf
+
+nano /etc/apache2/sites-available/db.Web-Daviid-ssl.conf
+
+<VirtualHost *:443>
+
+    ServerName www.kaltaramaju.com
+
+    DocumentRoot /var/www/html
+
+    SSLEngine on
+
+    SSLCertificateFile /home/cert/Cert.web/www.crt
+    SSLCertificateKeyFile /home/cert/Cert.web/www.key
+    SSLCACertificateFile /home/cert/Cert.web/MyCA.pem
+
+</VirtualHost>
+
+/usr/sbin/a2ensite db.Web-Daviid-ssl.conf
+
+systemctl restart apache2
+
+systemctl status apache2
