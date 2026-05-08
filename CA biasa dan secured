@@ -256,9 +256,9 @@ openssl pkcs7 \
 
 cp MyCA.cer /usr/local/share/ca-certificates/
 
-update-ca-certificates
+/usr/sbin/update-ca-certificates
 
-a2enmod ssl
+/usr/sbin/a2enmod ssl
 
 cp /etc/apache2/sites-available/default-ssl.conf \
 /etc/apache2/sites-available/db.Web-Daviid-ssl.conf
